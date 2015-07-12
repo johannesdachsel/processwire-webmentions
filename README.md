@@ -1,6 +1,6 @@
 # Webmentions for Processwire
 
-Module for [Processwire](https://processwire.com) that provides basic [Webmentions](http://indiewebcamp.com/Webmention) support. Currently only for receiving webmentions.
+Module for [Processwire](https://processwire.com) that provides basic [Webmention](http://indiewebcamp.com/Webmention) support. Currently only for receiving webmentions.
 
 ## Usage
 
