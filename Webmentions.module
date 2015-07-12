@@ -1,0 +1,140 @@
+<?php
+
+/**
+* Webmentions
+*
+* @author Johannes Dachsel <hello@johannesdachsel.com>
+* @version 1.1.0
+* @licensed under CC0 Universal Public Domain Dedication
+* @see <https://creativecommons.org/publicdomain/zero/1.0/>
+* 
+*/
+
+require_once 'vendor/Mf2/Parser.php';
+
+
+/**
+* Class Webmentions
+*/
+
+class Webmentions extends WireData implements Module{
+
+	/**
+	* Module information
+	*/
+	
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'Webmentions',
+			'summary' => 'Basic webmention integration for Processwire',
+			'version' => 001,
+			'href' => 'https://github.com/johannesdachsel/processwire-webmentions',
+			'singular' => true,
+			'autoload' => true,
+		);
+	}
+	
+	
+	/**
+	* Accepts mentions
+	*/
+	
+	public function endpoint(){
+		if (!isset($_POST['source']) || !isset($_POST['target'])) {
+			header($_SERVER['SERVER_PROTOCOL'] . ' 400 Bad Request');
+			exit;
+		}
+	
+		ob_start();
+		$ch = curl_init($_POST['source']);
+		curl_setopt($ch,CURLOPT_USERAGENT,'johannesdachsel.com (webmention.org)');
+		curl_setopt($ch,CURLOPT_HEADER,0);
+		$ok = curl_exec($ch);
+		curl_close($ch);
+		$source = ob_get_contents();
+		ob_end_clean();
+		
+		header($_SERVER['SERVER_PROTOCOL'] . ' 202 Accepted');
+		
+		if (stristr($source, $_POST['target'])) {
+			$this->acceptMention($_POST['source'], $_POST['target']);	
+		}
+	}
+
+	
+		
+	/**
+	* Accepts mentions
+	*/
+	
+	public function acceptMention($source, $target) {
+		$mention = Mf2\fetch($source);
+		$responses = array();
+		foreach($mention["items"] as $item){
+			$response = array();
+			
+			// Check for author information
+			if(is_array($item["properties"]["author"])){
+				$response["author_name"] = $item["properties"]["author"][0]["properties"]["name"][0];
+				$response["author_photo"] = $item["properties"]["author"][0]["properties"]["photo"][0];
+				$response["author_url"] = $item["properties"]["author"][0]["properties"]["url"][0];
+			} else {
+				$response["author_name"] = $item["properties"]["author"];
+			}
+			
+			// Check response type
+			if(is_array($item["type"])){
+				if(array_search("h-as-like", $item["type"]) !== FALSE) $response["type"] = "like";
+				if(array_search("h-as-repost", $item["type"]) !== FALSE) $response["type"] = "repost";
+				if(array_search("h-as-note", $item["type"]) !== FALSE) $response["type"] = "reply";
+			} else {
+				$response["type"] = "reply";
+			}
+			
+			// Check source URL
+			if(is_array($item["properties"]["url"])){
+				$response["source_url"] = $item["properties"]["url"][0];	
+			} else {
+				$response["source_url"] = $item["properties"]["url"];
+			}
+			
+			// Check for pubdate
+			if(array_key_exists("published", $item["properties"]) && is_array($item["properties"]["published"])){
+				$response["pubdate"] = $item["properties"]["published"][0];
+			} else {
+				$response["pubdate"] = (!empty($item["properties"]["published"])) ? $item["properties"]["published"] : date("c");
+			}
+			
+			// Check for content
+			if(array_key_exists("content", $item["properties"]) && is_array($item["properties"]["content"])){
+				$response["content"] = $item["properties"]["content"][0]["html"];
+			} else {
+				$response["content"] = (!empty($item["properties"]["content"])) ? $item["properties"]["content"] : "";
+			}
+			
+			// Add response array to responses array
+			$responses[] = $response;
+		}
+		
+		// Get target page
+		$target = str_replace('http://'.wire('config')->httpHost, "", $target);
+		$post = wire('pages')->get($target);
+		
+		// Add responses
+		// Populate rsp_* fields in response Repeater field
+		foreach($responses as $respItem){
+			$mention = $post->responses->getNew();
+			$post->setOutputFormatting(false);
+			$mention->rsp_author_name = $respItem["author_name"];
+			$mention->rsp_author_url = $respItem["author_url"];
+			$mention->rsp_author_photo = $respItem["author_photo"];
+			$mention->rsp_type = $respItem["type"];
+			$mention->rsp_source_url = $respItem["source_url"];
+			$mention->rsp_pubdate = $respItem["pubdate"];
+			$mention->rsp_content = $respItem["content"];
+			$mention->save();
+			$post->responses->add($mention);	
+			$post->save();
+		}
+	}		
+}
