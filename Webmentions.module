@@ -117,8 +117,9 @@ class Webmentions extends WireData implements Module{
 		}
 		
 		// Get target page
-		$target = str_replace('http://'.wire('config')->httpHost, "", $target);
-		$post = wire('pages')->get($target);
+		$url = parse_url($target);
+		$targetPage = $url['path'];
+		$post = wire('pages')->get($targetPage);
 		
 		// Add responses
 		// Populate rsp_* fields in response Repeater field
